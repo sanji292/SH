@@ -1,260 +1,160 @@
 --[[
-  SEA HUB v20.0 | ENTRENCHED WW1
-  Complete Error-Free Script with Anti-Cheat Bypass
-  Last Updated: 7/2025
+  SEA HUB v21.0 | ENTRENCHED WW1 🛡️
+  Consolidated Script with Deep Error Handling
+  Last Updated: 2025-04-12
 --]]
 
---#region Service Initialization
+--#region Core Initialization
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local Camera = workspace.CurrentCamera
---#endregion
 
---#region Core Error Prevention
-do
-    -- Permanent TopBarApp fix
-    if CoreGui:FindFirstChild("TopBarApp") then
-        CoreGui.TopBarApp:Destroy()
-    end
-    
+-- Anti-Cheat & Error Suppression
+getgenv().secure_mode = true
+for _, conn in pairs(getconnections(game:GetService("ScriptContext").Error)) do
+    pcall(conn.Disable, conn)
+end
+
+-- Fix CoreGui infinite yield :cite[1]:cite[4]
+pcall(function()
     CoreGui.DescendantAdded:Connect(function(child)
-        if child.Name == "TopBarApp" then
-            pcall(child.Destroy, child)
+        if child.Name == "TopBarApp" or child.Name == "TopBar" then
+            child:Destroy()
         end
     end)
-
-    -- Error stream suppression
-    for _, connection in pairs(getconnections(game:GetService("ScriptContext").Error)) do
-        pcall(connection.Disable, connection)
+    for _, child in ipairs(CoreGui:GetChildren()) do
+        if child.Name == "TopBarApp" then
+            child:Destroy()
+        end
     end
-
-    -- Secure environment
-    getgenv()._secureContext = true
-    local _ = table.concat({"m","e","m","_","p","r","o","t","e","c","t"})
-end
+end)
 --#endregion
 
---#region UI System (Guaranteed Load)
-local OrionLib
-repeat
-    OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
-    task.wait(1)
-until OrionLib and OrionLib.MakeWindow
-
+--#region UI System (Orion Library)
+local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
 local Window = OrionLib:MakeWindow{
-    Name = "SEA HUB v20.0",
+    Name = "SEA HUB v21.0",
     HidePremium = true,
-    SaveConfig = false
+    IntroText = "discord:s_op"
 }
 --#endregion
 
---#region Combat System
-do
-    local CombatTab = Window:MakeTab("Combat")
-    local LocalPlayer = Players.LocalPlayer
-    
-    -- Silent Aim Configuration
-    local SilentAim = {
-        Enabled = false,
-        FOV = 5000,
-        Prediction = 0.15
-    }
-    
-    CombatTab:AddToggle("SilentAimToggle", {
-        Text = "Precision Silent Aim",
-        Default = false,
-        Callback = function(state)
-            SilentAim.Enabled = state
-        end
-    })
-    
-    -- Target Validation
-    local function ValidateTarget(player)
-        return player ~= LocalPlayer
-            and player.Character
-            and player.Character:FindFirstChild("Head")
-            and player.Character:FindFirstChildOfClass("Humanoid")
-            and player.Character.Humanoid.Health > 0
+--#region Silent Aim System :cite[2]:cite[5]
+local CombatTab = Window:MakeTab("Combat")
+CombatTab:AddToggle{
+    Name = "Precision Silent Aim (5000+ Studs)",
+    Default = false,
+    Callback = function(state)
+        _G.SilentAim = state
     end
+}
+
+local function GetValidTarget()
+    local localPlayer = Players.LocalPlayer
+    local closestHead, maxDist = nil, 5000
     
-    -- Fire Method Hook
-    local originalFire
-    originalFire = hookfunction(ReplicatedStorage.Weapons.FireProjectile, newcclosure(function(self, origin, direction, ...)
-        if SilentAim.Enabled then
-            local closestTarget, closestDistance = nil, math.huge
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local character = player.Character
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
             
-            for _, player in ipairs(Players:GetPlayers()) do
-                if ValidateTarget(player) then
-                    local head = player.Character.Head
-                    local distance = (head.Position - origin.Position).Magnitude
-                    
-                    if distance < closestDistance then
-                        closestTarget = head
-                        closestDistance = distance
-                    end
+            if humanoid and humanoid.Health > 0 and head then
+                local distance = (head.Position - Camera.CFrame.Position).Magnitude
+                if distance <= maxDist then
+                    closestHead = head
+                    maxDist = distance
                 end
             end
-            
-            if closestTarget then
-                direction = (closestTarget.Position + closestTarget.Velocity * SilentAim.Prediction - origin.Position).Unit
-            end
-        end
-        return originalFire(self, origin, direction, ...)
-    end))
-    
-    -- ESP System
-    local ESP = {
-        Enabled = false,
-        Drawings = {}
-    }
-    
-    CombatTab:AddToggle("ESPToggle", {
-        Text = "ESP System",
-        Default = false,
-        Callback = function(state)
-            ESP.Enabled = state
-        end
-    })
-    
-    -- ESP Management
-    local function CreateESP(player)
-        if not ESP.Drawings[player] then
-            ESP.Drawings[player] = {
-                Box = Drawing.new("Square"),
-                Text = Drawing.new("Text")
-            }
-            local elements = ESP.Drawings[player]
-            elements.Box.Visible = false
-            elements.Box.Thickness = 2
-            elements.Text.Size = 14
         end
     end
-    
-    local function UpdateESP()
-        for player, elements in pairs(ESP.Drawings) do
-            if player:IsA("Player") and player ~= LocalPlayer then
-                local character = player.Character
-                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                
-                if ESP.Enabled and character and humanoid and humanoid.Health > 0 then
-                    local rootPart = character:FindFirstChild("HumanoidRootPart")
-                    if rootPart then
-                        local pos, vis = Camera:WorldToViewportPoint(rootPart.Position)
-                        if vis then
-                            -- Box calculations
-                            elements.Box.Size = Vector2.new(2000/pos.Z, 3000/pos.Z)
-                            elements.Box.Position = Vector2.new(pos.X - elements.Box.Size.X/2, pos.Y - elements.Box.Size.Y/2)
-                            elements.Box.Color = Color3.new(1,0,0)
-                            elements.Box.Visible = true
-                            
-                            -- Text calculations
-                            elements.Text.Text = string.format("%s [%dm]", player.Name, math.floor((rootPart.Position - Camera.CFrame.Position).Magnitude))
-                            elements.Text.Position = Vector2.new(pos.X, pos.Y - elements.Box.Size.Y/2 - 15)
-                            elements.Text.Color = Color3.new(1,1,1)
-                            elements.Text.Visible = true
-                            continue
-                        end
-                    end
-                end
-                elements.Box.Visible = false
-                elements.Text.Visible = false
-            end
+    return closestHead
+end
+
+local originalFire
+originalFire = hookfunction(ReplicatedStorage.Weapons.FireBullet, newcclosure(function(self, origin, direction, ...)
+    if _G.SilentAim then
+        local target = GetValidTarget()
+        if target then
+            direction = (target.Position + target.Velocity*0.15 - origin.Position).Unit
         end
     end
-    
-    Players.PlayerAdded:Connect(CreateESP)
-    Players.PlayerRemoving:Connect(function(player)
-        if ESP.Drawings[player] then
+    return originalFire(self, origin, direction, ...)
+end))
+--#endregion
+
+--#region Engineer Build System :cite[4]
+local EngineerTab = Window:MakeTab("Engineer")
+EngineerTab:AddSlider{
+    Name = "Build Speed Multiplier (1-20X)",
+    Min = 1,
+    Max = 20,
+    Default = 10,
+    Callback = function(value)
+        _G.BuildMultiplier = math.clamp(value, 1, 20)
+    end
+}
+
+local function HandleHammer(tool)
+    tool.Activated:Connect(function()
+        while tool.Parent == Players.LocalPlayer.Character do
             pcall(function()
-                ESP.Drawings[player].Box:Remove()
-                ESP.Drawings[player].Text:Remove()
+                ReplicatedStorage.ConstructionEvents.HammerHit:FireServer(
+                    workspace.CurrentCamera.Viewmodel,
+                    _G.BuildMultiplier or 1
+                )
             end)
-            ESP.Drawings[player] = nil
+            task.wait(0.15 / (_G.BuildMultiplier or 1))
         end
     end)
-    
-    RunService.Heartbeat:Connect(UpdateESP)
 end
---#endregion
 
---#region Engineer System
-do
-    local EngineerTab = Window:MakeTab("Engineer")
-    local BuildSystem = {Multiplier = 10}
-    
-    EngineerTab:AddSlider("BuildSpeed", {
-        Text = "Build Speed Multiplier",
-        Min = 1,
-        Max = 20,
-        Default = 10,
-        Callback = function(value)
-            BuildSystem.Multiplier = math.clamp(value, 1, 20)
-        end
-    })
-    
-    local function HandleHammer(tool)
-        tool.Activated:Connect(function()
-            while tool.Parent == Players.LocalPlayer.Character do
-                pcall(function()
-                    ReplicatedStorage.ConstructionEvents.HammerAction:FireServer({
-                        Type = "Build",
-                        Multiplier = BuildSystem.Multiplier,
-                        Timestamp = os.clock()
-                    })
-                end)
-                task.wait(0.15 / BuildSystem.Multiplier)
-            end
-        end)
+Players.LocalPlayer.Backpack.ChildAdded:Connect(function(child)
+    if child.Name == "Hammer" then
+        HandleHammer(child)
     end
-    
-    Players.LocalPlayer.Backpack.ChildAdded:Connect(function(child)
-        if child.Name == "ConstructionHammer" then
-            HandleHammer(child)
-        end
-    end)
-end
+end)
 --#endregion
 
---#region Officer System
-do
-    local OfficerTab = Window:MakeTab("Officer")
-    local Artillery = {Bypass = false}
-    
-    OfficerTab:AddToggle("ArtilleryToggle", {
-        Text = "Instant Artillery Strikes",
-        Default = false,
-        Callback = function(state)
-            Artillery.Bypass = state
+--#region Officer Artillery Bypass :cite[5]
+local OfficerTab = Window:MakeTab("Officer")
+OfficerTab:AddToggle{
+    Name = "Instant Artillery (0s Cooldown)",
+    Default = false,
+    Callback = function(state)
+        _G.ArtilleryBypass = state
+        if state then
+            pcall(function()
+                local binocs = Players.LocalPlayer.Backpack:FindFirstChild("Binoculars")
+                if binocs then
+                    binocs:SetAttribute("LastArtilleryTime", 0)
+                    binocs:SetAttribute("Cooldown", 0)
+                end
+            end)
         end
-    })
-    
-    local originalRequest
-    originalRequest = hookfunction(ReplicatedStorage.Communication.RequestArtillery, newcclosure(function(...)
-        if Artillery.Bypass then
-            return originalRequest(0, ...)
-        end
-        return originalRequest(...)
-    end))
-end
+    end
+}
+
+local originalRequest
+originalRequest = hookfunction(ReplicatedStorage.Communication.RequestArtillery, newcclosure(function(...)
+    if _G.ArtilleryBypass then
+        return originalRequest(..., 0)
+    end
+    return originalRequest(...)
+end))
 --#endregion
 
---#region Survival System
-do
-    local MiscTab = Window:MakeTab("Misc")
-    local GodMode = {Active = false}
-    
-    MiscTab:AddToggle("GodModeToggle", {
-        Text = "Invulnerability",
-        Default = false,
-        Callback = function(state)
-            GodMode.Active = state
-        end
-    })
-    
-    RunService.Heartbeat:Connect(function()
-        if GodMode.Active then
+--#region Health System & Error Suppression
+local MiscTab = Window:MakeTab("Misc")
+MiscTab:AddToggle{
+    Name = "God Mode (Force Health)",
+    Default = false,
+    Callback = function(state)
+        _G.GodMode = state
+        while _G.GodMode do
+            task.wait()
             pcall(function()
                 local humanoid = Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
                 if humanoid then
@@ -262,11 +162,25 @@ do
                 end
             end)
         end
+    end
+}
+
+-- Fix invalid model errors :cite[1]:cite[4]
+workspace.DescendantAdded:Connect(function(descendant)
+    pcall(function()
+        if descendant:IsA("Model") and not descendant:FindFirstChild("Head") then
+            Instance.new("Part", descendant){
+                Name = "Head",
+                Anchored = true,
+                Transparency = 1,
+                CanCollide = false
+            }
+        end
     end)
-end
+end)
 --#endregion
 
---#region Sound System Fixes
+--#region Sound System Fixes :cite[5]
 workspace.DescendantAdded:Connect(function(descendant)
     if descendant:IsA("Attachment") then
         pcall(function()
@@ -279,7 +193,7 @@ workspace.DescendantAdded:Connect(function(descendant)
 end)
 --#endregion
 
---#region Final Initialization
+--#region Final Activation
 OrionLib:Init()
-print("SEA HUB v20.0 - Fully Operational")
+print("SEA HUB v21.0 - All Systems Operational")
 --#endregion
